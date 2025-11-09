@@ -1,5 +1,7 @@
 import asyncio
 import aiohttp
+import pandas as pd
+from pathlib import Path
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.fsm.state import StatesGroup, State
@@ -18,6 +20,27 @@ async def get_games():
         async with session.get(GAMES_URL, ssl=False) as response:
             return await response.json()
 
+# Функция для сохранения данных в Excel через pandas
+def save_to_excel(data: dict):
+    filename = f"{data['game']} signup.xlsx"
+    path = Path(filename)
+
+    new_row = pd.DataFrame([{
+        "Игра": data['game'],
+        "Имя / кличка": data['name'],
+        "Контакт": data['contact'],
+        "Роль / персонаж": data['role'],
+        "Пожелания": data['wishes']
+    }])
+
+    if path.exists():
+        df = pd.read_excel(path)
+        df = pd.concat([df, new_row], ignore_index=True)
+    else:
+        df = new_row
+
+    df.to_excel(path, index=False)
+
 # FSM для записи игрока
 class Registration(StatesGroup):
     name = State()
@@ -25,35 +48,56 @@ class Registration(StatesGroup):
     role = State()
     wishes = State()
 
+# Reply клавиатура с кнопкой Start
+def reply_main_keyboard():
+    return types.ReplyKeyboardMarkup(
+        keyboard=[[types.KeyboardButton(text="🔁 Перезапустить бота")]],
+        resize_keyboard=True
+    )
+
+# Обработчик кнопки 🏁 Start
+@dp.message(lambda m: m.text == "🔁 Перезапустить бота")
+async def restart_bot(message: types.Message, state: FSMContext):
+    await state.clear()
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text="📅 Записаться", callback_data="show_games")
+    await message.answer(
+        "🔄 Бот перезапущен!\nЧтобы записаться, нажми на кнопку ниже.",
+        reply_markup=keyboard.as_markup()
+    )
+
 # Функция для начала регистрации
 async def start_registration(message: types.Message, state: FSMContext, game_title: str):
     await state.update_data(game=game_title)
-    await message.answer("Введите ваше имя или игровую кличку:")
+    await message.answer("Введите ваше имя или игровую кличку:", reply_markup=reply_main_keyboard())
     await state.set_state(Registration.name)
 
 # Последовательный сбор данных
 @dp.message(Registration.name)
 async def get_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("Введите ссылку на ваш VK или Telegram:")
+    await message.answer("Введите ссылку на ваш VK или Telegram:", reply_markup=reply_main_keyboard())
     await state.set_state(Registration.contact)
 
 @dp.message(Registration.contact)
 async def get_contact(message: types.Message, state: FSMContext):
     await state.update_data(contact=message.text)
-    await message.answer("Укажите до трех желаемых ролей(или имя персонажа, если переносите):")
+    await message.answer("Укажите до трех желаемых ролей (или имя персонажа, если переносите):", reply_markup=reply_main_keyboard())
     await state.set_state(Registration.role)
 
 @dp.message(Registration.role)
 async def get_role(message: types.Message, state: FSMContext):
     await state.update_data(role=message.text)
-    await message.answer("Введите пожелания и комментарии (если есть, в том числе - по существующей квенте):")
+    await message.answer("Введите пожелания и комментарии (если есть, в том числе - по существующей квенте):", reply_markup=reply_main_keyboard())
     await state.set_state(Registration.wishes)
 
 @dp.message(Registration.wishes)
 async def get_wishes(message: types.Message, state: FSMContext):
     await state.update_data(wishes=message.text)
     data = await state.get_data()
+
+    # Сохраняем запись в Excel
+    save_to_excel(data)
 
     # Формируем красивое сообщение об успешной записи
     confirmation_text = (
@@ -66,7 +110,7 @@ async def get_wishes(message: types.Message, state: FSMContext):
         f"Спасибо за регистрацию! Мы свяжемся с вами для уточнения деталей."
     )
 
-    await message.answer(confirmation_text, parse_mode="HTML")
+    await message.answer(confirmation_text, parse_mode="HTML", reply_markup=reply_main_keyboard())
     await state.clear()
 
 # Обработчик команды /start
@@ -98,7 +142,7 @@ async def choose_game(callback: types.CallbackQuery, state: FSMContext):
     games = await get_games()
     index = int(callback.data.split('_')[1])
     game = games[index]
-    await callback.message.answer(f"Вы выбрали игру: <b>{game['title']}</b>", parse_mode="HTML")
+    await callback.message.answer(f"Вы выбрали игру: <b>{game['title']}</b>", parse_mode="HTML", reply_markup=reply_main_keyboard())
     await start_registration(callback.message, state, game['title'])
     await callback.answer()
 
