@@ -41,28 +41,32 @@ async def get_name(message: types.Message, state: FSMContext):
 @dp.message(Registration.contact)
 async def get_contact(message: types.Message, state: FSMContext):
     await state.update_data(contact=message.text)
-    await message.answer("Укажите желаемую роль (или имя персонажа, если переносите):")
+    await message.answer("Укажите до трех желаемых ролей(или имя персонажа, если переносите):")
     await state.set_state(Registration.role)
 
 @dp.message(Registration.role)
 async def get_role(message: types.Message, state: FSMContext):
     await state.update_data(role=message.text)
-    await message.answer("Введите пожелания и комментарии (если есть):")
+    await message.answer("Введите пожелания и комментарии (если есть, в том числе - по существующей квенте):")
     await state.set_state(Registration.wishes)
 
 @dp.message(Registration.wishes)
 async def get_wishes(message: types.Message, state: FSMContext):
     await state.update_data(wishes=message.text)
     data = await state.get_data()
-    result = {
-        "game": data["game"],
-        "name": data["name"],
-        "contact": data["contact"],
-        "role": data["role"],
-        "wishes": data["wishes"]
-    }
-    await message.answer("✅ Спасибо! Вы успешно записаны на игру:")
-    await message.answer(str(result))
+
+    # Формируем красивое сообщение об успешной записи
+    confirmation_text = (
+        f"✅ <b>Вы успешно записаны на игру!</b>\n\n"
+        f"🎲 <b>Игра:</b> {data['game']}\n"
+        f"🧍 <b>Имя / кличка:</b> {data['name']}\n"
+        f"🔗 <b>Контакт:</b> {data['contact']}\n"
+        f"🎭 <b>Роль / персонаж:</b> {data['role']}\n"
+        f"💬 <b>Пожелания:</b> {data['wishes']}\n\n"
+        f"Спасибо за регистрацию! Мы свяжемся с вами для уточнения деталей."
+    )
+
+    await message.answer(confirmation_text, parse_mode="HTML")
     await state.clear()
 
 # Обработчик команды /start
@@ -72,7 +76,7 @@ async def start_command(message: types.Message):
     keyboard.button(text="📅 Записаться", callback_data="show_games")
     await message.answer(
         "Привет! Добро пожаловать в бота Revolution!\n"
-        "Чтобы записаться, выбери одну из доступных игр:",
+        "Чтобы записаться, нажми на кнопку ниже.",
         reply_markup=keyboard.as_markup()
     )
 
@@ -94,7 +98,7 @@ async def choose_game(callback: types.CallbackQuery, state: FSMContext):
     games = await get_games()
     index = int(callback.data.split('_')[1])
     game = games[index]
-    await callback.message.answer(f"Вы выбрали игру: {game['title']}")
+    await callback.message.answer(f"Вы выбрали игру: <b>{game['title']}</b>", parse_mode="HTML")
     await start_registration(callback.message, state, game['title'])
     await callback.answer()
 
