@@ -10,6 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 BOT_TOKEN = "8212891702:AAF0cRwxPOa4xXMcSlKdpvk18JQBxzhU0ZA"
 GAMES_URL = "https://www.mgrevolution.ru/data/games.json"
+ADMIN_PASSWORD = "revolution2025"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -48,14 +49,18 @@ class Registration(StatesGroup):
     role = State()
     wishes = State()
 
-# Reply клавиатура с кнопкой Start
+# FSM для админ-доступа
+class Admin(StatesGroup):
+    password = State()
+
+# Reply клавиатура с кнопкой Перезапуск
 def reply_main_keyboard():
     return types.ReplyKeyboardMarkup(
         keyboard=[[types.KeyboardButton(text="🔁 Перезапустить бота")]],
         resize_keyboard=True
     )
 
-# Обработчик кнопки 🏁 Start
+# Обработчик кнопки 🔁 Перезапустить бота
 @dp.message(lambda m: m.text == "🔁 Перезапустить бота")
 async def restart_bot(message: types.Message, state: FSMContext):
     await state.clear()
@@ -144,6 +149,50 @@ async def choose_game(callback: types.CallbackQuery, state: FSMContext):
     game = games[index]
     await callback.message.answer(f"Вы выбрали игру: <b>{game['title']}</b>", parse_mode="HTML", reply_markup=reply_main_keyboard())
     await start_registration(callback.message, state, game['title'])
+    await callback.answer()
+
+# --- ADMIN SECTION ---
+
+# Хэндлер для /admin
+@dp.message(lambda m: m.text == "/admin")
+async def admin_command(message: types.Message, state: FSMContext):
+    await message.answer("Введите админ-пароль:", reply_markup=reply_main_keyboard())
+    await state.set_state(Admin.password)
+
+# Проверка пароля
+@dp.message(Admin.password)
+async def check_admin_password(message: types.Message, state: FSMContext):
+    if message.text != ADMIN_PASSWORD:
+        await message.answer("❌ Неправильный админ-пароль!", reply_markup=reply_main_keyboard())
+        await state.clear()
+        return
+
+    # Пароль правильный — ищем Excel файлы
+    files = list(Path('.').glob('*.xlsx'))
+    if not files:
+        await message.answer("Нет файлов с записями.", reply_markup=reply_main_keyboard())
+        await state.clear()
+        return
+
+    kb = InlineKeyboardBuilder()
+    for f in files:
+        kb.button(text=f.name, callback_data=f"adminfile_{f.name}")
+    kb.adjust(1)
+
+    await message.answer("📂 Выберите файл для скачивания:", reply_markup=kb.as_markup())
+    await state.clear()
+
+# Отправка Excel файла администратору
+@dp.callback_query(lambda c: c.data.startswith("adminfile_"))
+async def send_admin_file(callback: types.CallbackQuery, state: FSMContext):
+    filename = callback.data.replace("adminfile_", "")
+    path = Path(filename)
+    if path.exists():
+        await callback.message.answer_document(types.FSInputFile(path))
+        await callback.message.answer("✅ Файл отправлен.", reply_markup=reply_main_keyboard())
+    else:
+        await callback.message.answer("❌ Файл не найден.", reply_markup=reply_main_keyboard())
+    await state.clear()
     await callback.answer()
 
 async def main():
