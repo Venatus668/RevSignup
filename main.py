@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 import pandas as pd
+import re
 from pathlib import Path
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
@@ -15,6 +16,11 @@ ADMIN_PASSWORD = "revolution2025"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+def safe_filename(name: str) -> str:
+    # заменяем все запрещённые символы на подчёркивание
+    return re.sub(r'[\\\\/:*?"<>|]', "_", name)
+
+
 # Функция получения списка игр из JSON
 async def get_games():
     async with aiohttp.ClientSession() as session:
@@ -23,7 +29,7 @@ async def get_games():
 
 # Функция для сохранения данных в Excel через pandas
 def save_to_excel(data: dict):
-    filename = f"{data['game']} signup.xlsx"
+    filename = f"{safe_filename(data['game'])} signup.xlsx"
     path = Path(filename)
 
     new_row = pd.DataFrame([{
